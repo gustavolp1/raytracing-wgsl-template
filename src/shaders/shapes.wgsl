@@ -1,32 +1,12 @@
 fn hit_sphere(center: vec3f, radius: f32, r: ray, record: ptr<function, hit_record>, max: f32)
 {
-  // This function solves the quadratic equation for ray-sphere intersection.
-  // A ray is P(t) = A + t*B (where A=r.origin, B=r.direction)
-  // A sphere is (P - C) * (P - C) = radius*radius (where C=center)
-  //
-  // Substitute P(t) into the sphere equation:
-  // (A + t*B - C) * (A + t*B - C) = radius*radius
-  //
-  // Let oc = A - C (vector from ray origin to sphere center)
-  // (t*B + oc) * (t*B + oc) = radius*radius
-  //
-  // Expand the dot product:
-  // t*t*(B*B) + 2*t*(B*oc) + (oc*oc) - radius*radius = 0
-  //
-  // This is a quadratic equation at^2 + bt + c = 0
-  // a = dot(B, B)
-  // b = 2 * dot(B, oc)
-  // c = dot(oc, oc) - radius*radius
-
   let oc = r.origin - center;
   let a = dot(r.direction, r.direction);
-  let half_b = dot(oc, r.direction); // We use half_b for a simpler discriminant calculation
+  let half_b = dot(oc, r.direction);
   let c = dot(oc, oc) - radius * radius;
 
-  // Discriminant = (2*half_b)^2 - 4*a*c = 4*(half_b*half_b - a*c)
   let discriminant = half_b * half_b - a * c;
 
-  // If discriminant is negative, the ray misses the sphere.
   if (discriminant < 0.0)
   {
     record.hit_anything = false;
@@ -35,30 +15,23 @@ fn hit_sphere(center: vec3f, radius: f32, r: ray, record: ptr<function, hit_reco
 
   let sqrtd = sqrt(discriminant);
 
-  // Find the nearest root (smallest t) that is in the acceptable range
   var root = (-half_b - sqrtd) / a;
 
-  // Check the first root (t0)
   if (root < RAY_TMIN || root > max)
   {
-    // First root is not valid, check the second root (t1)
     root = (-half_b + sqrtd) / a;
     if (root < RAY_TMIN || root > max)
     {
-      // Neither root is valid, no hit.
       record.hit_anything = false;
       return;
     }
   }
 
-  // We have a valid hit! Record the intersection details.
   record.t = root;
   record.p = ray_at(r, record.t);
   let outward_normal = (record.p - center) / radius;
-  
-  // Check if the ray hit the front or back of the surface
+
   record.frontface = dot(r.direction, outward_normal) < 0.0;
-  // Make the normal always point against the incoming ray
   record.normal = select(-outward_normal, outward_normal, record.frontface);
   
   record.hit_anything = true;
