@@ -202,8 +202,13 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
   {
     var b = boxesb[i];
     
+    // FIX: b.rotation.xyz contains EULER ANGLES, not a quaternion.
+    // The w=0 from objects.js causes a divide-by-zero.
+    // We must build a new, valid quaternion from the euler angles.
+    var rot_q = quaternion_from_euler(b.rotation.xyz);
+    
     // Transform ray into box's local space (handling rotation + translation)
-    var inv_rot = q_inverse(b.rotation);
+    var inv_rot = q_inverse(rot_q); // Use our new, safe quaternion
     var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
     var local_dir = rotate_vector(r.direction, inv_rot); // length is 1.0
     var local_ray = ray(local_origin, local_dir);
@@ -220,7 +225,8 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
       closest.hit_anything = true;
 
       // Transform normal from local to world space and add frontface logic
-      var world_normal = normalize(rotate_vector(temp_record.normal, b.rotation));
+      // Use our new, safe quaternion for the rotation
+      var world_normal = normalize(rotate_vector(temp_record.normal, rot_q));
       closest.frontface = dot(r.direction, world_normal) < 0.0;
       closest.normal = select(-world_normal, world_normal, closest.frontface);
     }
@@ -472,15 +478,19 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
     }
 
     // --- B. Is it a scattering material (Metal, Dielectric, Lambertian)? ---
-    if (mat_smoothness > 0.0) // Metal
+
+    // A "true" metal must have smoothness > 0 AND high specularity.
+    // The "Metal" scene floor has smoothness=1 but specularity=0.01,
+    // so it will fail this check and be treated as Lambertian.
+    if (mat_smoothness > 0.0 && mat_specular > 0.5) // Metal
     {
-      behaviour = metal(rec.normal, r_.direction, mat_specular, random_sphere);
+      behaviour = metal(rec.normal, r_.direction, mat_absorption, random_sphere);
     }
     else if (mat_smoothness < 0.0) // Dielectric (glass)
     {
       behaviour = dielectric(rec.normal, r_.direction, mat_specular, rec.frontface, random_sphere, mat_absorption, rng_state);
     }
-    else // Lambertian (diffuse)
+    else // Lambertian (or "fake" metal with low specularity)
     {
       behaviour = lambertian(rec.normal, mat_absorption, random_sphere, rng_state);
     }
@@ -488,16 +498,24 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
     // 5. Process the material's decision
     if (!behaviour.scatter)
     {
-      // The material decided to absorb the ray (e.g., a metal with
-      // 0 reflectivity or a dielectric total internal reflection error).
+      // The material decided to absorb the ray
       break; // The ray's life is over.
     }
 
     // 6. Prepare for the next bounce
     
-    // The ray's attenuation is multiplied by the object's color.
-    // (e.g., A white ray hitting a red ball becomes a red ray).
-    color *= rec.object_color.xyz;
+    // BUG FIX 2: Handle metal's white specularity, as per README.md
+    if (mat_smoothness > 0.0) // Metal
+    {
+      // Mix the object's color with pure white based on its specularity.
+      // A mat_specular of 1.0 (like in the scene) results in pure white (a mirror).
+      color *= mix(vec3f(1.0, 1.0, 1.0), rec.object_color.xyz, mat_specular);
+    }
+    else // Lambertian or Dielectric
+    {
+      // These materials absorb light normally.
+      color *= rec.object_color.xyz;
+    }
 
     // Update the ray for the next loop iteration.
     r_.origin = rec.p;               // The new origin is the hit point.
@@ -558,14 +576,33 @@ fn render(@builtin(global_invocation_id) id : vec3u)
   var map_fb = mapfb(id.xy, rez);
   
   // 7. Accumulate Frames
-  // This blends the current frame with the previous one
-  // to smooth out noise over time.
   var should_accumulate = uniforms[3];
+  var frame_count = f32(uniforms[0]); // Our accumulation counter (n)
+
   if (should_accumulate > 0.0)
   {
-    // A simple 50/50 blend for accumulation
-    color_out = 0.5 * color_out + 0.5 * rtfb[map_fb];
+    // We are accumulating. frame_count is the total number of samples.
+    // We use a rolling average.
+    var n = frame_count;
+    var last_avg = rtfb[map_fb].xyz;
+    var new_sample = color_out.xyz;
+
+    if (n == 1.0)
+    {
+      // This is the first frame we're accumulating.
+      // The "average" is just this one sample.
+      color_out = vec4(new_sample, 1.0);
+    }
+    else
+    {
+      // This is the true rolling average:
+      // Avg_n = Avg_n-1 * (n-1)/n + Sample_n * 1/n
+      var blend_factor = 1.0 / n;
+      var new_avg = (1.0 - blend_factor) * last_avg + blend_factor * new_sample;
+      color_out = vec4(new_avg, 1.0);
+    }
   }
+  // If not accumulating, we just use color_out as-is (from this frame's samples)
 
   // 8. Write the final color to the framebuffers
   rtfb[map_fb] = color_out; // This buffer is used for accumulation
