@@ -203,14 +203,13 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     var b = boxesb[i];
     
     // FIX: b.rotation.xyz contains EULER ANGLES, not a quaternion.
-    // The w=0 from objects.js causes a divide-by-zero.
-    // We must build a new, valid quaternion from the euler angles.
+    // We must build a new, valid quaternion from them.
     var rot_q = quaternion_from_euler(b.rotation.xyz);
     
     // Transform ray into box's local space (handling rotation + translation)
     var inv_rot = q_inverse(rot_q); // Use our new, safe quaternion
     var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
-    var local_dir = rotate_vector(r.direction, inv_rot); // length is 1.0
+    var local_dir = rotate_vector(r.direction, inv_rot);
     var local_ray = ray(local_origin, local_dir);
 
     // Test the local ray against an AABB centered at (0,0,0)
@@ -219,13 +218,13 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     if (temp_record.hit_anything)
     {
       closest.t = temp_record.t;
-      closest.p = ray_at(r, temp_record.t); // Get world-space p
+      closest.p = ray_at(r, temp_record.t); 
       closest.object_color = b.color;
       closest.object_material = b.material;
       closest.hit_anything = true;
 
-      // Transform normal from local to world space and add frontface logic
-      // Use our new, safe quaternion for the rotation
+      // Transform normal from local to world space
+      // Use our new, safe quaternion 'rot_q'
       var world_normal = normalize(rotate_vector(temp_record.normal, rot_q));
       closest.frontface = dot(r.direction, world_normal) < 0.0;
       closest.normal = select(-world_normal, world_normal, closest.frontface);
@@ -478,10 +477,8 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
     }
 
     // --- B. Is it a scattering material (Metal, Dielectric, Lambertian)? ---
-
-    // A "true" metal must have smoothness > 0 AND high specularity.
-    // The "Metal" scene floor has smoothness=1 but specularity=0.01,
-    // so it will fail this check and be treated as Lambertian.
+    
+    // FIX: Change this 'if' statement
     if (mat_smoothness > 0.0 && mat_specular > 0.5) // Metal
     {
       behaviour = metal(rec.normal, r_.direction, mat_absorption, random_sphere);
