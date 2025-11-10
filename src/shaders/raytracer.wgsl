@@ -166,13 +166,12 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
   var spheresCount = i32(uniforms[19]);
   var quadsCount = i32(uniforms[20]);
   var boxesCount = i32(uniforms[21]);
-  var meshCount = i32(uniforms[27]); // This is the count we need
-  var trianglesCount = i32(uniforms[22]); // This is NOT for the mesh loop
+  var meshCount = i32(uniforms[27]);
+  var trianglesCount = i32(uniforms[22]);
 
   var closest = hit_record(max, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
   var temp_record = hit_record(0.0, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
 
-  // --- 1. Loop through Spheres ---
   for (var i = 0; i < spheresCount; i = i + 1)
   {
     var s = spheresb[i];
@@ -186,7 +185,6 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  // --- 2. Loop through Quads ---
   for (var i = 0; i < quadsCount; i = i + 1)
   {
     var q = quadsb[i];
@@ -205,19 +203,17 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  // --- 3. Loop through Boxes ---
   for (var i = 0; i < boxesCount; i = i + 1)
   {
     var b = boxesb[i];
     var rot_q = quaternion_from_euler(b.rotation.xyz);
     var inv_rot = q_inverse(rot_q);
-    
-    // Check if this is a Box or a Cylinder
+
     if (b.radius.w == 0.0) 
     {
-      // --- It's a Box ---
-      var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
-      var local_dir = rotate_vector(r.direction, inv_rot);
+      // --- FIX: Use quaternion_rotation instead of rotate_vector ---
+      var local_origin = quaternion_rotation(r.origin - b.center.xyz, inv_rot);
+      var local_dir = quaternion_rotation(r.direction, inv_rot);
       var local_ray = ray(local_origin, local_dir);
 
       hit_box(local_ray, vec3f(0.0), b.radius.xyz, &temp_record, closest.t);
@@ -230,19 +226,17 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
         closest.object_material = b.material;
         closest.hit_anything = true;
 
-        var world_normal = normalize(rotate_vector(temp_record.normal, rot_q));
+        var world_normal = normalize(quaternion_rotation(temp_record.normal, rot_q));
         closest.frontface = dot(r.direction, world_normal) < 0.0;
         closest.normal = select(-world_normal, world_normal, closest.frontface);
       }
     }
     else
     {
-      // --- It's a Cylinder ---
-      // This logic is from the rubric's check_ray_collision
       let C_world = b.center.xyz;
-      let halfH   = b.radius.y; // Use y-radius for height
+      let halfH   = b.radius.y;
       let H_world = 2.0 * halfH;
-      let R_world = b.radius.w; // Use w-radius for cylinder radius
+      let R_world = b.radius.w;
 
       let V_world = normalize(quaternion_rotation(vec3f(0.0, 1.0, 0.0), rot_q));
       let C_base = C_world - V_world * halfH;
@@ -251,16 +245,13 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
 
       if (temp_record.hit_anything)
       {
-        closest = temp_record; // hit_cylinder returns a full record
+        closest = temp_record;
         closest.object_color = b.color;
         closest.object_material = b.material;
       }
     }
   }
 
-  // --- 4. Loop through Meshes ---
-  
-  // BUGFIX 1: Loop over 'meshCount', not 'trianglesCount'
   for (var i = 0; i < meshCount; i = i + 1) {
     var curr_mesh = meshb[i];
 
@@ -290,9 +281,6 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
         let v1_new = quaternion_rotation(curr_tri.v1.xyz * scale, q) + transform;
         let v2_new = quaternion_rotation(curr_tri.v2.xyz * scale, q) + transform;
 
-        // BUGFIX 2: DELETED the 3 lines that wrote back to 'curr_tri'
-        
-        // Use the transformed vertices (v0_new, v1_new, v2_new) directly
         hit_triangle(r, v0_new, v1_new, v2_new, &temp_record, closest.t);
 
         if (!temp_record.hit_anything) {
@@ -484,16 +472,11 @@ fn render(@builtin(global_invocation_id) id : vec3u)
 
   var should_accumulate = uniforms[3];
 
-  // rtfb stores the SUM of all samples in xyz, and the COUNT in w.
-  // We multiply by should_accumulate (0.0 or 1.0) to reset the sum if the camera moved.
   var accumulated_color = rtfb[map_fb] * should_accumulate;
-  
-  // Add the new color (r,g,b) and increment the sample count (w)
+
   accumulated_color += color_out; 
 
-  // Store the new sum and count
   rtfb[map_fb] = accumulated_color;
-  
-  // The final display color is the SUM divided by the COUNT
+
   fb[map_fb] = accumulated_color / accumulated_color.w;
 }
