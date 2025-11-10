@@ -285,13 +285,14 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
 
 fn lambertian(normal : vec3f, absorption: f32, random_sphere: vec3f, rng_state: ptr<function, u32>) -> material_behaviour
 {
-  var scatter_direction = normal + random_sphere;
+  var n = normalize(normal + random_sphere);
+  var rng = rng_next_float(rng_state);
 
-  if (length(scatter_direction) < 0.0001)
-  {
-    scatter_direction = normal;
+  if (absorption < rng){
+    return material_behaviour(true, n);
   }
-  return material_behaviour(true, normalize(scatter_direction));
+
+  return material_behaviour(false, n);
 }
 
 fn metal(normal : vec3f, direction: vec3f, fuzz: f32, random_sphere: vec3f) -> material_behaviour
@@ -392,17 +393,21 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
       break;
     }
 
-    if (mat_smoothness > 0.0 && mat_specular > 0.5)
-    {
-      behaviour = metal(rec.normal, r_.direction, mat_absorption, random_sphere);
-    }
-    else if (mat_smoothness < 0.0)
+    if (mat_smoothness < 0.0)
     {
       behaviour = dielectric(rec.normal, r_.direction, mat_specular, rec.frontface, random_sphere, mat_absorption, rng_state);
     }
     else
     {
-      behaviour = lambertian(rec.normal, mat_absorption, random_sphere, rng_state);
+      var specular_probability = mat_specular;
+      var random_float = rng_next_float(rng_state);
+      var smoothness_luciano_soares = mat_smoothness * f32(random_float < specular_probability);
+
+      var behaviour_lambert = lambertian(rec.normal, mat_absorption, random_sphere, rng_state);
+      var behaviour_metal = metal(rec.normal, r_.direction, mat_absorption, random_sphere);
+      
+      behaviour.direction = mix(behaviour_lambert.direction, behaviour_metal.direction, smoothness_luciano_soares);
+      behaviour.scatter = bool(mix(f32(behaviour_lambert.scatter), f32(behaviour_metal.scatter), mat_smoothness));
     }
 
     if (!behaviour.scatter)
@@ -410,14 +415,7 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
       break;
     }
 
-    if (mat_smoothness > 0.0)
-    {
-      color *= mix(vec3f(1.0, 1.0, 1.0), rec.object_color.xyz, mat_specular);
-    }
-    else
-    {
-      color *= rec.object_color.xyz;
-    }
+    color *= rec.object_color.xyz;
 
     r_.origin = rec.p;
     r_.direction = behaviour.direction;
