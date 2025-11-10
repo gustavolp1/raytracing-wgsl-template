@@ -41,10 +41,10 @@ class Box
     color = [0.0, 0.0, 0.0, 0.0];
     material = [0.0, 0.0, 0.0, 0.0];
 
-    constructor(center, color, rotation, radius, material)
+    constructor(center, color, rotation, radius, material, cylinder_radius=0.0)
     {
         this.center = [center[0], center[1], center[2], 0.0];
-        this.radius = [radius[0], radius[1], radius[2], 0.0];
+        this.radius = [radius[0], radius[1], radius[2], cylinder_radius];
         this.rotation = [rotation[0], rotation[1], rotation[2], 0.0];
         this.color = [color[0], color[1], color[2], 1.0];
         this.material = material;

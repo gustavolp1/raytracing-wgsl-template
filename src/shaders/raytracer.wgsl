@@ -211,23 +211,50 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     var b = boxesb[i];
     var rot_q = quaternion_from_euler(b.rotation.xyz);
     var inv_rot = q_inverse(rot_q);
-    var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
-    var local_dir = rotate_vector(r.direction, inv_rot);
-    var local_ray = ray(local_origin, local_dir);
-
-    hit_box(local_ray, vec3f(0.0), b.radius.xyz, &temp_record, closest.t);
-
-    if (temp_record.hit_anything)
+    
+    // Check if this is a Box or a Cylinder
+    if (b.radius.w == 0.0) 
     {
-      closest.t = temp_record.t;
-      closest.p = ray_at(r, temp_record.t); 
-      closest.object_color = b.color;
-      closest.object_material = b.material;
-      closest.hit_anything = true;
+      // --- It's a Box ---
+      var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
+      var local_dir = rotate_vector(r.direction, inv_rot);
+      var local_ray = ray(local_origin, local_dir);
 
-      var world_normal = normalize(rotate_vector(temp_record.normal, rot_q));
-      closest.frontface = dot(r.direction, world_normal) < 0.0;
-      closest.normal = select(-world_normal, world_normal, closest.frontface);
+      hit_box(local_ray, vec3f(0.0), b.radius.xyz, &temp_record, closest.t);
+
+      if (temp_record.hit_anything)
+      {
+        closest.t = temp_record.t;
+        closest.p = ray_at(r, temp_record.t); 
+        closest.object_color = b.color;
+        closest.object_material = b.material;
+        closest.hit_anything = true;
+
+        var world_normal = normalize(rotate_vector(temp_record.normal, rot_q));
+        closest.frontface = dot(r.direction, world_normal) < 0.0;
+        closest.normal = select(-world_normal, world_normal, closest.frontface);
+      }
+    }
+    else
+    {
+      // --- It's a Cylinder ---
+      // This logic is from the rubric's check_ray_collision
+      let C_world = b.center.xyz;
+      let halfH   = b.radius.y; // Use y-radius for height
+      let H_world = 2.0 * halfH;
+      let R_world = b.radius.w; // Use w-radius for cylinder radius
+
+      let V_world = normalize(quaternion_rotation(vec3f(0.0, 1.0, 0.0), rot_q));
+      let C_base = C_world - V_world * halfH;
+
+      hit_cylinder(r, C_base, V_world, R_world, H_world, &temp_record, closest.t);
+
+      if (temp_record.hit_anything)
+      {
+        closest = temp_record; // hit_cylinder returns a full record
+        closest.object_color = b.color;
+        closest.object_material = b.material;
+      }
     }
   }
 

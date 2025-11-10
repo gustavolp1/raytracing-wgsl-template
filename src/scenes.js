@@ -506,4 +506,35 @@ async function Everything()
     };
 }
 
+async function CustomScene() 
+{
+	let spheres = [
+		new Sphere([0, -1001, 0], [0.5, 0.5, 0.5], 1000, [0.9, 0, 0.6, 0]), 
+	];
+
+	let boxes = [
+		new Box([-2, 0, -3, 0], [0.25, 0.5, 0], [0, 0, 0, 0], [0.5, 0.5, 0.5], [0, 0, 0, 0], 0.5), 
+		new Box([0.0, 0, -3, 0], [0, 1, 1], [0, 0, 0, 0], [0.5, 1.0, 0.5], [1, 0, 1, 0], 0.5), 
+		new Box([2, 0, -3, 0], [0, 0, 0], [0, 0, 0, 0], [0.5, 0.25, 0.5], [0, 0, 0, 1], 0.5), 
+	];
+
+	let quads = [
+	];
+
+	return {
+		spheres : spheres,
+		quads : quads,
+		boxes : boxes,
+		triangles: [],
+		meshes: [],
+		backgroundColor1 : [0, 0.5, 1],
+		backgroundColor2 : [1, 1, 1],
+		focusDistance: 5,
+		focusAngle: 0,
+		sunIntensity: 1,
+		samplesPerPixel: 1,
+		maxBounces: 10
+	};
+}
+
 export { getAvailableScene };
