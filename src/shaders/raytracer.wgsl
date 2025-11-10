@@ -211,7 +211,6 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
 
     if (b.radius.w == 0.0) 
     {
-      // --- FIX: Use quaternion_rotation instead of rotate_vector ---
       var local_origin = quaternion_rotation(r.origin - b.center.xyz, inv_rot);
       var local_dir = quaternion_rotation(r.direction, inv_rot);
       var local_ray = ray(local_origin, local_dir);
