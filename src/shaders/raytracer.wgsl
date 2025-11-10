@@ -151,16 +151,28 @@ fn envoriment_color(direction: vec3f, color1: vec3f, color2: vec3f) -> vec3f
   return col;
 }
 
+fn quaternion_rotation(v: vec3<f32>, q_in: vec4<f32>) -> vec3<f32> {
+    let q = q_in / max(length(q_in), 1e-8);
+    let u = q.xyz;
+    let s = q.w;
+
+    return 2.0 * dot(u, v) * u +
+           (s * s - dot(u, u)) * v +
+           2.0 * s * cross(u, v);
+}
+
 fn check_ray_collision(r: ray, max: f32) -> hit_record
 {
   var spheresCount = i32(uniforms[19]);
   var quadsCount = i32(uniforms[20]);
   var boxesCount = i32(uniforms[21]);
-  var meshCount = i32(uniforms[27]);
+  var meshCount = i32(uniforms[27]); // This is the count we need
+  var trianglesCount = i32(uniforms[22]); // This is NOT for the mesh loop
 
   var closest = hit_record(max, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
   var temp_record = hit_record(0.0, vec3f(0.0), vec3f(0.0), vec4f(0.0), vec4f(0.0), false, false);
 
+  // --- 1. Loop through Spheres ---
   for (var i = 0; i < spheresCount; i = i + 1)
   {
     var s = spheresb[i];
@@ -174,6 +186,7 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
+  // --- 2. Loop through Quads ---
   for (var i = 0; i < quadsCount; i = i + 1)
   {
     var q = quadsb[i];
@@ -192,12 +205,11 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
+  // --- 3. Loop through Boxes ---
   for (var i = 0; i < boxesCount; i = i + 1)
   {
     var b = boxesb[i];
-
     var rot_q = quaternion_from_euler(b.rotation.xyz);
-
     var inv_rot = q_inverse(rot_q);
     var local_origin = rotate_vector(r.origin - b.center.xyz, inv_rot);
     var local_dir = rotate_vector(r.direction, inv_rot);
@@ -219,44 +231,52 @@ fn check_ray_collision(r: ray, max: f32) -> hit_record
     }
   }
 
-  for (var i = 0; i < meshCount; i = i + 1)
-  {
-    var m = meshb[i];
+  // --- 4. Loop through Meshes ---
+  
+  // BUGFIX 1: Loop over 'meshCount', not 'trianglesCount'
+  for (var i = 0; i < meshCount; i = i + 1) {
+    var curr_mesh = meshb[i];
 
-    var inv_rot = q_inverse(m.rotation);
-    var inv_scale_vec = 1.0 / m.scale.xyz;
-    var local_origin = rotate_vector(r.origin - m.transform.xyz, inv_rot) * inv_scale_vec;
+    var rot = curr_mesh.rotation.xyz;
+    let q = quaternion_from_euler(rot.xyz);
+    var transform = curr_mesh.transform.xyz;
+    var scale = curr_mesh.scale.xyz;
+
+    var bound_min = quaternion_rotation(curr_mesh.min.xyz * scale, q) + transform;
+    var bound_max = quaternion_rotation(curr_mesh.max.xyz * scale, q) + transform;
+
+    var inside = AABB_intersect(r, bound_min, bound_max);
     
-    var local_dir_unnormalized = rotate_vector(r.direction, inv_rot) * inv_scale_vec;
-    var local_dir_len = length(local_dir_unnormalized);
-    var local_dir = local_dir_unnormalized / local_dir_len;
-    var local_ray = ray(local_origin, local_dir);
+    if (inside){
+      
+      var triangle_start = curr_mesh.start;
+      var triangle_end = curr_mesh.end;
 
-    var local_t_max = closest.t * local_dir_len;
+      var color = curr_mesh.color;
+      var material = curr_mesh.material;
 
-    if (AABB_intersect(local_ray, m.min.xyz, m.max.xyz))
-    {
-      for (var j = i32(m.start); j < i32(m.end); j = j + 1)
-      {
-        var tri = trianglesb[j];
-        hit_triangle(local_ray, tri.v0.xyz, tri.v1.xyz, tri.v2.xyz, &temp_record, local_t_max);
+      for (var j = i32(triangle_start); j < i32(triangle_end); j = j + 1){
+
+        var curr_tri = trianglesb[j];
+
+        let v0_new = quaternion_rotation(curr_tri.v0.xyz * scale, q) + transform;
+        let v1_new = quaternion_rotation(curr_tri.v1.xyz * scale, q) + transform;
+        let v2_new = quaternion_rotation(curr_tri.v2.xyz * scale, q) + transform;
+
+        // BUGFIX 2: DELETED the 3 lines that wrote back to 'curr_tri'
         
-        if (temp_record.hit_anything)
-        {
-          var t_hit_world = temp_record.t / local_dir_len;
-          closest.t = t_hit_world;
-          local_t_max = temp_record.t;
-          
-          closest.p = ray_at(r, closest.t);
-          closest.object_color = m.color;
-          closest.object_material = m.material;
-          closest.hit_anything = true;
+        // Use the transformed vertices (v0_new, v1_new, v2_new) directly
+        hit_triangle(r, v0_new, v1_new, v2_new, &temp_record, closest.t);
 
-          var world_normal = normalize(rotate_vector(temp_record.normal * inv_scale_vec, m.rotation));
-          closest.frontface = dot(r.direction, world_normal) < 0.0;
-          closest.normal = select(-world_normal, world_normal, closest.frontface);
+        if (!temp_record.hit_anything) {
+          continue;
         }
-      }
+
+        temp_record.object_material = material;
+        temp_record.object_color = color;
+
+        closest = temp_record;
+      } 
     }
   }
 
