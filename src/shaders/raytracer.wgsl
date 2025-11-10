@@ -458,25 +458,17 @@ fn render(@builtin(global_invocation_id) id : vec3u)
   var map_fb = mapfb(id.xy, rez);
 
   var should_accumulate = uniforms[3];
-  var frame_count = f32(uniforms[0]);
 
-  if (should_accumulate > 0.0)
-  {
-    var n = frame_count;
-    var last_avg = rtfb[map_fb].xyz;
-    var new_sample = color_out.xyz;
+  // rtfb stores the SUM of all samples in xyz, and the COUNT in w.
+  // We multiply by should_accumulate (0.0 or 1.0) to reset the sum if the camera moved.
+  var accumulated_color = rtfb[map_fb] * should_accumulate;
+  
+  // Add the new color (r,g,b) and increment the sample count (w)
+  accumulated_color += color_out; 
 
-    if (n == 1.0)
-    {
-      color_out = vec4(new_sample, 1.0);
-    }
-    else
-    {
-      var blend_factor = 1.0 / n;
-      var new_avg = (1.0 - blend_factor) * last_avg + blend_factor * new_sample;
-      color_out = vec4(new_avg, 1.0);
-    }
-  }
-  rtfb[map_fb] = color_out;
-  fb[map_fb] = color_out;
+  // Store the new sum and count
+  rtfb[map_fb] = accumulated_color;
+  
+  // The final display color is the SUM divided by the COUNT
+  fb[map_fb] = accumulated_color / accumulated_color.w;
 }
