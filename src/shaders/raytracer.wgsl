@@ -415,12 +415,12 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
     {
       var specular_probability = mat_specular;
       var random_float = rng_next_float(rng_state);
-      var smoothness_luciano_soares = mat_smoothness * f32(random_float < specular_probability);
+      var smoothness = mat_smoothness * f32(random_float < specular_probability);
 
       var behaviour_lambert = lambertian(rec.normal, mat_absorption, random_sphere, rng_state);
       var behaviour_metal = metal(rec.normal, r_.direction, mat_absorption, random_sphere);
       
-      behaviour.direction = mix(behaviour_lambert.direction, behaviour_metal.direction, smoothness_luciano_soares);
+      behaviour.direction = mix(behaviour_lambert.direction, behaviour_metal.direction, smoothness);
       behaviour.scatter = bool(mix(f32(behaviour_lambert.scatter), f32(behaviour_metal.scatter), mat_smoothness));
     }
 
