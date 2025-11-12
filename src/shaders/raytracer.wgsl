@@ -61,7 +61,7 @@ struct triangle {
   v1 : vec4f,
   v2 : vec4f,
 };
-
+ 
 struct mesh {
   transform : vec4f,
   scale : vec4f,
