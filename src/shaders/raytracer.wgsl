@@ -431,7 +431,7 @@ fn trace(r: ray, rng_state: ptr<function, u32>) -> vec3f
 
     color *= rec.object_color.xyz;
 
-    r_.origin = rec.p;
+    r_.origin = rec.p + behaviour.direction * 0.001;
     r_.direction = behaviour.direction;
   }
 
